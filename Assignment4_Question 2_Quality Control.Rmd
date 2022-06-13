@@ -1,0 +1,156 @@
+---
+title: "QUALITY CONTROL"
+author: "Bac Tran"
+date: '2022-06-08'
+output: html_document
+---
+
+##Environment
+
+First we shall load the necessary packages
+```{r}
+library(lubridate)
+library(dplyr)
+library(qicharts2)
+```
+##Data
+
+We load the data by reading "monitor.csv" file. The csv file need to be in the same directory as this notebook.
+The data has 10,000 observations and 4 variable. 
+We need to turn Timpestamp column to Date data type.
+We add more column day of year for chart plotting task.
+
+```{r}
+dat <- read.csv("monitor.csv", header = TRUE)
+dat$Timestamp <- as.Date(dat$Timestamp) #Turn Timestamp to Date data type
+dat$day_of_year <- yday(dat$Timestamp) # add the column day of year
+str(dat)
+```
+
+##Group by day of year
+
+Now we group the data by day of year.
+```{r}
+# Define group per day of year
+group <- dat %>% group_by(day_of_year)
+group
+```
+We will use control charts such as "Xbar" and "S" to show the model is in or out of control in term of memory usage, prediction time, predictions.
+The XBAR chart plots the means of the sets of consecutive points. An XBAR chart shows whether the process mean is in control.
+The S chart plots the standard deviation of the sets of consecutive points. An S chart shows whether the process variability is in control.
+
+We assume the first 40 days of data can be used to establish the control limits for the remainder of the data.
+
+##PROCESS MEMORY
+
+#Xbar-chart for memory usage of server
+
+```{r}
+data_memory <- group[, c(2,5)] #Process Memory grouped by day of year
+XBAR_ProcessMemory <- qicharts2::qic(x = data_memory$day_of_year, y = data_memory$ProcessMemory, data = data_memory, chart = "xbar", freeze = 40, title = "XBAR Chart of Process Memory")
+plot(XBAR_ProcessMemory)
+```
+
+```{r}
+summary(XBAR_ProcessMemory)
+```
+
+#S-chart for memory usage of server
+Let’s take a look at the variability of memory usage of server by ploting S chart.
+
+```{r}
+# Plot S-chart for ProcessMemory variable
+S_ProcessMemory <- qicharts2::qic(x = data_memory$day_of_year, y = data_memory$ProcessMemory, data = data_memory, chart = "s", freeze = 40, title = "S Chart of Process Memory")
+plot(S_ProcessMemory)
+```
+
+```{r}
+summary(S_ProcessMemory)
+```
+
+##PREDICTION
+
+#Xbar-chart for Prediction
+```{r}
+data_predict <- group[, c(3,5)] # Prediction grouped by day of year
+
+XBAR_Prediction <- qicharts2::qic(x = data_predict$day_of_year, y = data_predict$Prediction, data = data_predict, chart = "xbar", freeze = 40, title = "XBAR Chart of Prediction")
+plot(XBAR_Prediction)
+```
+
+```{r}
+summary(XBAR_Prediction)
+```
+
+#S-chart for Prediction
+
+```{r}
+S_Prediction <- qicharts2::qic(x = data_predict$day_of_year, y = data_predict$Prediction, data = data_predict, chart = "s", freeze = 40, title = "S Chart of Prediction")
+plot(S_Prediction)
+```
+
+```{r}
+summary(S_Prediction)
+```
+
+##PREDICTION TIME
+
+#Xbar-chart for Prediction Time
+```{r}
+data_predict_time <- group[, c(4,5)] #Prediction Time grouped by day of year
+
+XBAR_Predic_time <- qicharts2::qic(x = data_predict_time$day_of_year, y = data_predict_time$PredictionTimeMS, data = data_predict_time, chart = "xbar", freeze = 40, title = "XBAR Chart of Prediction Time ms")
+plot(XBAR_Predic_time)
+```
+
+```{r}
+summary(XBAR_Predic_time)
+```
+
+#S-chart for Prediction Time
+
+```{r}
+S_Predic_time <- qicharts2::qic(x = data_predict_time$day_of_year, y = data_predict_time$PredictionTimeMS, data = data_predict_time, chart = "s", freeze = 40, title = "S Chart of Prediction Time ms")
+plot(S_Predic_time)
+```
+
+```{r}
+summary(S_Predic_time)
+```
+
+##QUALITY CONTROL TABLE
+
+```{r}
+#Turn summary result to data frame
+X_m <- as.data.frame(summary(XBAR_ProcessMemory))
+X_p <- as.data.frame(summary(XBAR_Prediction))
+X_t <- as.data.frame(summary(XBAR_Predic_time))
+S_m <- as.data.frame(summary(S_ProcessMemory))
+S_p <- as.data.frame(summary(S_Prediction))
+S_t <- as.data.frame(summary(S_Predic_time))
+
+#get the sigma.signal and run.signal from summary data
+x_breach <- c(X_m$sigma.signal,X_p$sigma.signal, X_t$sigma.signal)
+x_run_signal <- c(X_m$runs.signal,X_p$runs.signal, X_t$runs.signal)
+s_breach <- c(S_m$sigma.signal,S_p$sigma.signal, S_t$sigma.signal)
+s_run_signal <- c(S_m$runs.signal,S_p$runs.signal, S_t$runs.signal)
+
+#create quality control data frame
+qc <- data.frame(Mesurement = c("Memory","Prediction","Time"),
+                Xbar_breaches = x_breach,
+                Xbar_runs_signal = x_run_signal,
+                S_breaches = s_breach,
+                S_runs_signal = s_run_signal)
+
+#Create the Overall column based on values of run signal of Xbar and S. If all values xbar and s of the measurement equal 0, it is considered In Control. Otherwise it's Out of Control.
+qc <- qc %>% mutate(Overall = if_else(Xbar_runs_signal == 0 & Xbar_breaches == 0
+                                     &   S_runs_signal == 0 & S_runs_signal == 0,
+                                     "In Control", "Out of Control"))
+
+qc
+
+```
+
+We can see all 3 Measurements are Out of Control.
+
+
